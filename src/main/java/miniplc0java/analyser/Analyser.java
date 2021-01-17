@@ -11,42 +11,17 @@ import miniplc0java.symbol.*;
 
 public final class Analyser {
 
-/*------------------------------analyser global var------------------------------*/
-    /**tokenizer */
-    Tokenizer tokenizer;
-    
-    /**token */
+    Tokenizer tokenizer;    
     Token peekedToken = null;
-
-    /**the list of all the symbol tables */
     public SymbolTableList symbolTableList;
-
-    /**mark the level of the block */
     int level;
-
-    /**in order to analyse A and B*/
     int exprnum;
-
-/*------------------------analyseFunction() global var-------------------------------*/
-
-    /**calculate the function slot. cleared at the begin of the analyseFunction()*/
     int loc_slot, param_slot, ret_slot;
-
-    /** the current function, init as _start at the construction function
-     * set at the begin of the analyseFunction()
-     * return to the _start at the end of the analyseFunction()
-    */
     SymbolFn func;
-
-    /**the temp symbol table to store the param of a function.
-     * copied to the symbol table list at the begin of the analyseStatementSeq()
-     */
     SymbolTable funcParam;
-    
-    /** point to the target of the break/continue statement jump*/
+
     int breakins, continueins;
 
-    /** mark whether the function returns*/
     boolean hasRet;
 
     public Analyser(Tokenizer tokenizer) {
@@ -59,14 +34,13 @@ public final class Analyser {
         this.hasRet = false;
     }
 
-    /** get the next Token without moving the pointer*/
     private Token peek() throws TokenizeError {
         if (peekedToken == null) {
             peekedToken = tokenizer.nextToken();
         }
         return peekedToken;
     }
-    /** get the next Token and move the pointer*/
+
     private Token next() throws TokenizeError {
         exprnum++;
         if (peekedToken != null) {
@@ -78,7 +52,7 @@ public final class Analyser {
         }
     }
 
-    /** check the next Token, throws CompileError ff it's inconsistent with tt*/
+
     private Token expect(TokenType tt) throws CompileError {
         exprnum++;
         var token = peek();
@@ -117,33 +91,21 @@ public final class Analyser {
             }
         }
 
-        //grammatical analysis ends successfully
 
-        //no main function
         SymbolFn main = symbolTableList.searchSymbolFn("main");
         if(main == null)
             throw new AnalyzeError(ErrorCode.NullMainFunction, new Pos(0, 0));
 
-        //set the instruction list of _start()
         InstructionList start = symbolTableList.searchSymbolFn("_start").getInstructionList();
-        //alloc sizeof(ret)
         start.add(new Instruction(InstructionType.stackAlloc, true, main.getRet_slot()));
-        //call main
         start.add(new Instruction(InstructionType.call, true, main.getIndex_global()));
-        //pop the ret
         if(main.getRet_slot() != 0)
             start.add(new Instruction(InstructionType.popN, true, main.getRet_slot()));
 
-        //debug
        symbolTableList.print();
              
     }
 
-/*------------------------------------Function------------------------------------- */
-    /**<p>analyse the function<p>
-     * <p>function_param -> 'const'? IDENT ':' ty<p>
-     * <p>function_param_list -> function_param (',' function_param)*<p>
-     * <p>function -> 'fn' IDENT '(' function_param_list? ')' '->' ty block_stmt<p>*/
     public void analyseFunction() throws CompileError{
         expect(TokenType.FN_KW);
         
@@ -156,17 +118,14 @@ public final class Analyser {
 
         Token name, type;
         
-        //expect for the name of the function
         name = expect(TokenType.IDENT);
         if(name.getDataType() != DataType.NONE)
             throw new AnalyzeError(ErrorCode.InvalidType, name.getStartPos());
         if(symbolTableList.searchSymbolFn(name.getValueString()) != null)
             throw new AnalyzeError(ErrorCode.DuplicateDeclaration, name.getStartPos());
 
-        // expect for '('
         expect(TokenType.L_PAREN);
 
-        //analyse the param, edit param_slot
         if(peek().getTokenType() != TokenType.R_PAREN){
             analyseFunctionParam();
             while(peek().getTokenType() == TokenType.COMMA){
@@ -175,33 +134,26 @@ public final class Analyser {
             }
         }
 
-        //set param_slot
         func.setParam_slot(param_slot);
 
-        //expect for ')' and '->'
         expect(TokenType.R_PAREN);
         expect(TokenType.ARROW);
 
-        //expect for type
         type = expect(TokenType.IDENT);
         if(type.getDataType() == DataType.NONE)
             throw new AnalyzeError(ErrorCode.InvalidType, type.getStartPos());
         func.setRetType(type.getDataType());
         
-        //set return slot
         if(type.getDataType() == DataType.VOID)
             ret_slot = 0;
         else
             ret_slot = 1;
         func.setRet_slot(ret_slot);
 
-        //add the new func into the function table
         symbolTableList.getFunctionSymbolTable().put(name.getValueString(), func);
 
-        //analyse statement sequence, edit the loc_slot
         analyseStatementSeq();
         
-        //set local slot
         func.setLoc_slot(loc_slot);
 
         if(!hasRet && func.getRetType() == DataType.VOID)
@@ -209,12 +161,9 @@ public final class Analyser {
         else if(!hasRet)
             throw new AnalyzeError(ErrorCode.NotAllRoutesReturn, name.getStartPos());
 
-        //back to _start
         func = (SymbolFn)symbolTableList.getFunctionSymbolTable().get("_start");
     }
 
-    /**<p>analyse the param for the function<p>
-     * <p>function_param -> 'const'? IDENT ':' ty<p>*/
     private void analyseFunctionParam() throws CompileError{
         Token name, type;
         SymbolVar var = new SymbolVar(-1, -1, param_slot);
@@ -224,30 +173,22 @@ public final class Analyser {
             next();
         }
 
-        //get the name
         name = expect(TokenType.IDENT);
         if(name.getDataType() == DataType.UINT || name.getDataType() == DataType.DOUBLE)
             throw new AnalyzeError(ErrorCode.InvalidType, name.getStartPos());
 
-        //expect for ':'
         expect(TokenType.COLON);
 
-        //get the type
         type = expect(TokenType.IDENT);
         if(type.getDataType() == DataType.NONE || name.getDataType() == DataType.VOID)
             throw new AnalyzeError(ErrorCode.InvalidType, type.getStartPos());
         var.setDataType(type.getDataType());
 
-        //get the param
         var.setParam(true);
-        //add to the temp symbol table
         funcParam.put(name.getValueString(), var);
         param_slot ++;
     }
 
-/*------------------------------------Statement------------------------------------- */
-    /**<p>analyse the statement<p>
-     * stmt -> expr_stmt | decl_stmt | if_stmt | while_stmt | return_stmt | block_stmt | empty_stmt*/
     private void analyseStatement() throws CompileError{
         
         switch(peek().getTokenType()){
@@ -283,14 +224,11 @@ public final class Analyser {
         }
     }
 
-    /**analyse the Statement block*/
     private void analyseStatementSeq() throws CompileError{
         expect(TokenType.L_BRACE);
         level++;
-        //add a new local var table
         symbolTableList.addSymbolTable(level);
 
-        //merge the param symbol
         symbolTableList.getLocalSymbolTable(func).cat(funcParam);
         funcParam.clear();
         boolean isStatement = true;
@@ -308,11 +246,8 @@ public final class Analyser {
         if(level != 0)symbolTableList.popSymbolTable();
     }
 
-    /**<p>analyse if statement<p>
-     * if_stmt -> 'if' expr block_stmt ('else' (block_stmt | if_stmt))*/
     private void analyseIfStatement() throws CompileError{
-        //hasRet = hasRet || ifStatement has return
-        //ifStatement has return = if block has return && else block has return
+
         boolean temp = hasRet;
         boolean ifhasRet = true;
         hasRet = false;
@@ -330,11 +265,9 @@ public final class Analyser {
 
         if(!hasRet)ifhasRet = false;
         hasRet = false;
-        //else
         if(peek().getTokenType() == TokenType.ELSE_KW){
             int elseins = func.instructionList.size();
 
-            //get 'else'
             next();
 
             if(peek().getTokenType() == TokenType.IF_KW)
@@ -349,7 +282,6 @@ public final class Analyser {
         hasRet = temp || ifhasRet;
     }
     
-    /**analyse while statement */
     private void analyseWhileStatement() throws CompileError{
         boolean temp = hasRet;
         int tempbreakins = breakins;
@@ -374,7 +306,6 @@ public final class Analyser {
         hasRet = temp;
     }
     
-    /**analyse return statement */
     private void analyseReturnStatement() throws CompileError{
         DataType retType;
         hasRet = true;
@@ -400,41 +331,32 @@ public final class Analyser {
 
         Token name, type;
         
-        //the var
         SymbolVar var = new SymbolVar(symbolTableList.getGlobalSymbolTable().size(), loc_slot, param_slot);
 
-        //get the const or let
         if(next().getTokenType() == TokenType.LET_KW)
             var.setConstant(false);
         else
             var.setConstant(true);        
 
-        //get the global or not
         var.setGlobal(level == 0);
 
-        //name of the var
         name = expect(TokenType.IDENT);
         if(name.getDataType() == DataType.UINT || name.getDataType() == DataType.DOUBLE)
             throw new AnalyzeError(ErrorCode.InvalidType, name.getStartPos());
 
-        //expect for ':'
         expect(TokenType.COLON);
 
-        //type of the var
         type = expect(TokenType.IDENT);
         if(type.getDataType() == DataType.NONE || type.getDataType() == DataType.VOID)
             throw new AnalyzeError(ErrorCode.InvalidType, type.getStartPos());
         var.setDataType(type.getDataType());
         
-        //duplicate declaration
         if(symbolTableList.searchDuplicatedSymbolVar(name.getValueString()) != null)
             throw new AnalyzeError(ErrorCode.DuplicateDeclaration, name.getStartPos());
 
-        //constant without assignment
         if(peek().getTokenType() != TokenType.ASSIGN && var.isConstant())
             throw new AnalyzeError(ErrorCode.ConstantNeedValue, peek().getStartPos());
 
-        //add to the symbol table
         if(level == 0)
             symbolTableList.getGlobalSymbolTable().put(name.getValueString(), var);
         else{
@@ -445,14 +367,12 @@ public final class Analyser {
         if(peek().getTokenType() == TokenType.ASSIGN){
             next();
             
-            //locA or globA
             if(level == 0)
                 func.instructionList.add(new Instruction(InstructionType.globA, true, var.getIndex_global()));
             else
                 func.instructionList.add(new Instruction(InstructionType.locA, true, var.getIndex_local()));
             if(var.getDataType() != analyseB())
                 throw new AnalyzeError(ErrorCode.TypeMismatch, name.getStartPos());
-            //store64
             func.instructionList.add(new Instruction(InstructionType.store64));
         }
 
@@ -477,49 +397,31 @@ public final class Analyser {
         expect(TokenType.SEMICOLON);
     }
 
-/*------------------------------------Expression------------------------------------- */
-    /*
-     * A -> B (= B)?
-     * B -> C ( == | != | < | > | <= | >= C ) ?
-     * C -> D { + | - D } *
-     * D -> E { * | / E } *
-     * E -> F ( as INT | DOUBLE )*
-     * F -> ( - )* G
-     * G -> INT STRING DOUBLE  | (B) | IDENT (   '(' call_param_list? ')'   )?
-     */
     private boolean analyseA() throws CompileError {
         exprnum = 0;
         Token peeked = peek();
         
         DataType retType = analyseB();
 
-        // analyse assignment expression
         if (peek().getTokenType() == TokenType.ASSIGN) {
             if(peeked.getTokenType() != TokenType.IDENT || exprnum != 1)
                 throw new AnalyzeError(ErrorCode.ExpectedToken, peek().getStartPos());
             
-            //pop the load instruction
             func.instructionList.pop();
 
             Symbol sym = symbolTableList.searchSymbol(peeked.getValueString());
             
-            //not declared
             if(sym == null || sym instanceof SymbolFn)
                 throw new AnalyzeError(ErrorCode.NotDeclared, peeked.getStartPos());
             
             SymbolVar var = (SymbolVar)sym;
             
-            //is constant
             if(var.isConstant())
                 throw new AnalyzeError(ErrorCode.AssignToConstant, peek().getStartPos());
-
-            //get '='
             next();
 
             if(var.getDataType() != analyseB())
                 throw new AnalyzeError(ErrorCode.TypeMismatch, peeked.getStartPos());
-
-            //store64
             func.instructionList.add(new Instruction(InstructionType.store64));
             return true;
         }

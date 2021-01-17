@@ -3,15 +3,6 @@ package miniplc0java.symbol;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * the list of the SymbolTable
- * <div></div>
- * The 0th element is function table, the 1st element is global Var(the father is the former), both elements belongs to
- *  global symbols, which need to write into the binary file.
- * <div></div>
- * Starting with the second element is the local variability table, 
- * which is only relevant to the semantic analysis process.
- */
 public class SymbolTableList {
     private List<SymbolTable> symbolTableList = new ArrayList<>();
     
